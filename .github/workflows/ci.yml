@@ -32,6 +32,8 @@ jobs:
           CLAUDE_HUB_TEST_KEYCHAIN: ${{ runner.os == 'macOS' && '1' || '' }}
         run: go test ./...
       - name: Legacy bash script tests
+        # The bash script reads sysctl/vm_stat for its status line: macOS only.
+        if: runner.os == 'macOS'
         run: ./test.sh
 
   cross-compile:
@@ -62,6 +64,10 @@ jobs:
         run: |
           if command -v apk >/dev/null; then apk add --no-cache go curl tar git; else apt-get update && apt-get install -y golang-go curl ca-certificates tar git; fi
       - uses: actions/checkout@v4
+      - name: Trust the checkout
+        # The container runs as root over a workspace owned by the runner user; without this
+        # git refuses the repo and `go build` fails stamping VCS info.
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: install.sh against a local release server
         env:
           GOTOOLCHAIN: auto
