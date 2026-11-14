@@ -1,0 +1,3 @@
+*.live
+*.bak-*
+.DS_Store

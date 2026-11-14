@@ -1,0 +1,223 @@
+#!/usr/bin/env bash
+# >>> claude-hub config (everything down to '<<< claude-hub config' is settings)
+# ==============================================================================
+# KEYS
+#   One long-lived Claude token per account (from `claude setup-token`), named
+#   KEY_<something>. Profiles below pick one by name, so switching a profile to
+#   another account is a one-line change, and several profiles can share a key.
+#   Keep this file private (chmod 700): it holds the tokens.
+# ==============================================================================
+# you@example.com
+KEY_personal=""
+
+# you@work.example.com
+KEY_work=""
+
+# ==============================================================================
+# PROFILES
+#   List profile names in PROFILES, then give each one optional settings:
+#     <name>_CLAUDE_CONFIG_DIR  -> exported as CLAUDE_CONFIG_DIR
+#     <name>_KEY                -> name of a KEY_* above; its token is exported
+#                                  as CLAUDE_CODE_OAUTH_TOKEN
+#     <name>_ICON               -> shown by `claude-hub statusline` (default ⬜)
+#                                  an emoji, or a colour as "#rrggbb" (drawn as a block)
+#   Leave a setting empty (or delete the line) to use Claude's default.
+#   Profile names may use letters, digits and underscores.
+# ==============================================================================
+PROFILES="personal work"
+
+# Profile used when neither an argument nor ./.claude-profile names one.
+# Empty (or not in PROFILES) = plain `claude`.
+DEFAULT_PROFILE="personal"
+
+personal_ICON="🟩"
+personal_CLAUDE_CONFIG_DIR="$HOME/.claude"
+personal_KEY="KEY_personal"
+
+work_ICON="#eab308"
+work_CLAUDE_CONFIG_DIR="$HOME/.claude-work"
+work_KEY="KEY_work"
+
+
+# ALL PROFILES (including plain claude)
+#   CLAUDE_CODE_TMPDIR: where Claude keeps scratch files and background output.
+#   Empty = Claude's default (/tmp). Used only when the folder can be created.
+HUB_CLAUDE_CODE_TMPDIR=""
+#   On each start, delete files there untouched for this many days (empty = never).
+HUB_TMP_MAX_AGE_DAYS=""
+#   Also delete macOS "._*" AppleDouble files under these folders (exFAT clutter).
+HUB_CLEAN_APPLEDOUBLE=""
+#   Status line: show CPU / RAM / disk after the profile (1 = on, empty = off).
+HUB_STATUS_SYSTEM=1
+#   Disks shown as "label=mount point"; ones not mounted are skipped.
+#   On macOS your files live on /System/Volumes/Data, not on / (the sealed system volume).
+HUB_STATUS_DISKS="Storage=/System/Volumes/Data"
+# <<< claude-hub config
+# ==============================================================================
+# Usage: claude-hub [profile] [claude options/args...]
+#   Profile selection, first match wins:
+#     1. first argument, when it is a name in PROFILES (otherwise it goes to claude)
+#     2. ./.claude-profile in the directory you run claude-hub from
+#     3. DEFAULT_PROFILE
+#     4. none -> plain `claude`
+#   An unknown name in ./.claude-profile or DEFAULT_PROFILE -> plain `claude`.
+#   Inside a running session (CLAUDE_HUB_PROFILE set) nothing is re-picked: the call goes
+#   to the real claude with the session's own profile, unless a profile name is given.
+#   Installed as `claude` (a link in a folder ahead of ~/.local/bin), it runs the next
+#   `claude` on PATH, i.e. the one Claude's installer and auto-update manage.
+#   Everything after the profile is passed to claude exactly as given.
+#
+#   claude-hub statusline
+#     Status line command for Claude Code settings.json:
+#       "statusLine": { "type": "command", "command": "claude-hub statusline" }
+#     Prints the active profile (so "statusline" can't be a profile name).
+# ==============================================================================
+set -u
+
+if [ "${1-}" = "statusline" ]; then
+  payload="$(cat)"   # Claude's JSON status payload
+  p="${CLAUDE_HUB_PROFILE:-default}"
+  icon_var="${p}_ICON"
+  # Hand the payload to Orca's status hook (usage/rate limits for the Orca app
+  # and phone); it does nothing outside Orca terminals.
+  orca_sl="$HOME/.orca/agent-hooks/claude-statusline.sh"
+  extra=""
+  [ -x "$orca_sl" ] && extra="$(printf '%s' "$payload" | /bin/sh "$orca_sl" 2>/dev/null)"
+  icon="${!icon_var:-⬜}"
+  if [[ "$icon" =~ ^#([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})$ ]]; then
+    icon="\033[38;2;$((16#${BASH_REMATCH[1]}));$((16#${BASH_REMATCH[2]}));$((16#${BASH_REMATCH[3]}))m██\033[0m"
+  fi
+  line="$icon $p"
+  if [ -n "${HUB_STATUS_SYSTEM-}" ]; then
+    # Colour a percentage: yellow from 70%, red from 90%.
+    pct() { if [ "$1" -ge 90 ]; then printf '\033[31m%s%%\033[0m' "$1"
+            elif [ "$1" -ge 70 ]; then printf '\033[33m%s%%\033[0m' "$1"
+            else printf '%s%%' "$1"; fi; }
+    ncpu="$(sysctl -n hw.ncpu)"
+    cpu="$(ps -A -o %cpu= | awk -v n="$ncpu" '{s+=$1} END{v=s/n; if(v>100)v=100; printf "%.0f", v}')"
+    # Same "Memory Used" as Activity Monitor: app (anonymous - purgeable) + wired + compressed.
+    read -r ram_used ram_pct <<EOF
+$(vm_stat | awk -v total="$(sysctl -n hw.memsize)" '
+  /page size of/ {ps=$8}
+  /^Anonymous pages/ {a=$3} /^Pages purgeable/ {p=$3}
+  /^Pages wired down/ {w=$4} /^Pages occupied by compressor/ {c=$5}
+  END {u=(a-p+w+c)*ps; printf "%.1f %.0f", u/1073741824, u*100/total}')
+EOF
+    ram_total="$(( $(sysctl -n hw.memsize) / 1073741824 ))"
+    line="$line · CPU $(pct "$cpu") · RAM ${ram_used}/${ram_total}G $(pct "$ram_pct")"
+    for d in ${HUB_STATUS_DISKS:-}; do
+      label="${d%%=*}"; mnt="${d#*=}"
+      [ -d "$mnt" ] || continue
+      read -r dpct dfree <<EOF
+$(df -k "$mnt" 2>/dev/null | awk 'NR==2 {printf "%.0f %.0f", $3*100/($3+$4), $4/1048576}')
+EOF
+      [ -n "${dfree-}" ] && line="$line · $label $(pct "$dpct") ${dfree}G free"
+    done
+  fi
+  [ -n "$extra" ] && line="$line · $extra"
+  printf '%b\n' "$line"
+  exit 0
+fi
+
+# The real claude: the first `claude` on PATH that is not this script, so this file can be
+# installed as `claude` in a folder ahead of ~/.local/bin while Claude's own installer and
+# auto-update keep managing ~/.local/bin/claude.
+resolve() {
+  local f="$1" d
+  while [ -L "$f" ]; do
+    d="$(cd -P "$(dirname "$f")" && pwd)"; f="$(readlink "$f")"
+    case "$f" in /*) ;; *) f="$d/$f" ;; esac
+  done
+  printf '%s/%s\n' "$(cd -P "$(dirname "$f")" && pwd)" "$(basename "$f")"
+}
+self="$(resolve "${BASH_SOURCE[0]}")"
+real=""
+IFS_SAVE="$IFS"; IFS=:
+for d in $PATH; do
+  c="${d:-.}/claude"
+  if [ -f "$c" ] && [ -x "$c" ] && [ "$(resolve "$c")" != "$self" ]; then real="$c"; break; fi
+done
+IFS="$IFS_SAVE"
+if [ -z "$real" ]; then
+  echo "claude-hub: no real claude found on PATH (only this launcher)" >&2
+  exit 127
+fi
+
+is_defined() {
+  local p
+  for p in $PROFILES; do [ "$p" = "$1" ] && return 0; done
+  return 1
+}
+
+# Called from inside a running claude-hub session (a hook, a subagent, `claude -p` in a tool):
+# keep that session's profile, config dir and token exactly as they are. Only an explicit
+# profile name as the first argument switches.
+if [ -n "${CLAUDE_HUB_PROFILE:-}" ] && ! { [ $# -gt 0 ] && is_defined "$1"; }; then
+  # Claude Code does not pass CLAUDE_CODE_OAUTH_TOKEN on to hooks and tool shells, so a nested
+  # call arrives with the profile but without its token: put that same profile's key back.
+  if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] && is_defined "$CLAUDE_HUB_PROFILE"; then
+    key_var="${CLAUDE_HUB_PROFILE}_KEY"; key="${!key_var:-}"
+    if [[ "$key" =~ ^KEY_[A-Za-z0-9_]+$ ]] && [ -n "${!key:-}" ]; then
+      export CLAUDE_CODE_OAUTH_TOKEN="${!key}"
+    fi
+  fi
+  exec "$real" "$@"
+fi
+
+if [ -n "${HUB_CLAUDE_CODE_TMPDIR:-}" ]; then
+  if mkdir -p "$HUB_CLAUDE_CODE_TMPDIR" 2>/dev/null; then
+    chmod 700 "$HUB_CLAUDE_CODE_TMPDIR" 2>/dev/null
+    export CLAUDE_CODE_TMPDIR="$HUB_CLAUDE_CODE_TMPDIR"
+    # Cleanup runs in the background so Claude starts immediately.
+    (
+      for d in ${HUB_CLEAN_APPLEDOUBLE:-}; do
+        [ -d "$d" ] && find "$d" -name '._*' -type f -delete
+      done
+      if [ -n "${HUB_TMP_MAX_AGE_DAYS:-}" ]; then
+        find "$HUB_CLAUDE_CODE_TMPDIR" -mindepth 1 -type f -mtime +"$HUB_TMP_MAX_AGE_DAYS" -delete
+        find "$HUB_CLAUDE_CODE_TMPDIR" -mindepth 1 -type d -empty -mtime +"$HUB_TMP_MAX_AGE_DAYS" -delete
+      fi
+    ) >/dev/null 2>&1 &
+    disown 2>/dev/null
+  else
+    echo "claude-hub: $HUB_CLAUDE_CODE_TMPDIR unavailable; using default temp folder" >&2
+  fi
+fi
+
+profile=""
+source=""
+# The first argument is taken as the profile only when it names one in PROFILES;
+# anything else (a subcommand like "mcp", a prompt) is passed to claude untouched.
+if [ $# -gt 0 ] && is_defined "$1"; then
+  profile="$1"; source="argument"; shift
+elif [ -f "$PWD/.claude-profile" ]; then
+  # first non-empty line, whitespace trimmed
+  profile="$(grep -v '^[[:space:]]*$' "$PWD/.claude-profile" | head -n1 | tr -d '[:space:]')"
+  source=".claude-profile"
+fi
+if [ -z "$profile" ] && [ -n "${DEFAULT_PROFILE:-}" ]; then
+  profile="$DEFAULT_PROFILE"; source="DEFAULT_PROFILE"
+fi
+
+if [ -n "$profile" ] && is_defined "$profile"; then
+  dir_var="${profile}_CLAUDE_CONFIG_DIR"
+  key_var="${profile}_KEY"
+  dir="${!dir_var:-}"
+  key="${!key_var:-}"
+  tok=""
+  if [ -n "$key" ]; then
+    if [[ "$key" =~ ^KEY_[A-Za-z0-9_]+$ ]] && [ -n "${!key:-}" ]; then
+      tok="${!key}"
+    else
+      echo "claude-hub: profile '$profile' names key '$key', which is not set; using Claude's own login" >&2
+    fi
+  fi
+  [ -n "$dir" ] && export CLAUDE_CONFIG_DIR="$dir"
+  [ -n "$tok" ] && export CLAUDE_CODE_OAUTH_TOKEN="$tok"
+  export CLAUDE_HUB_PROFILE="$profile"   # shown by `claude-hub statusline`
+  echo "claude-hub: profile '$profile' (from $source)" >&2
+elif [ -n "$profile" ]; then
+  echo "claude-hub: profile '$profile' (from $source) is not defined; using plain claude" >&2
+fi
+
+exec "$real" "$@"
