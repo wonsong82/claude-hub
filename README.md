@@ -58,3 +58,7 @@ install -m 700 claude-hub ~/.local/bin/claude-hub
 ```
 
 `test.sh` runs every check against a stand-in `claude` and never prints a token.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
