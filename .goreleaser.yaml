@@ -42,6 +42,8 @@ release:
   github:
     owner: wonsong82
     name: claude-hub
+  # A tag like v1.0.0-rc.1 is published as a pre-release, so it never becomes "latest".
+  prerelease: auto
   footer: |
     Install: `brew install wonsong82/tap/claude-hub`, or
     `curl -fsSL https://raw.githubusercontent.com/wonsong82/claude-hub/main/install.sh | sh`.
