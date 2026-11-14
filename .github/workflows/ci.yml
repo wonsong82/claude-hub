@@ -1,0 +1,75 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Shells for the shim tests
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y zsh fish
+      - name: gofmt
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+      - name: go vet
+        run: go vet ./...
+      - name: go test
+        env:
+          # macOS only: one real-Keychain test against a throwaway keychain file.
+          CLAUDE_HUB_TEST_KEYCHAIN: ${{ runner.os == 'macOS' && '1' || '' }}
+        run: go test ./...
+      - name: Legacy bash script tests
+        run: ./test.sh
+
+  cross-compile:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: [darwin/amd64, darwin/arm64, linux/amd64, linux/arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build ${{ matrix.target }}
+        run: |
+          GOOS="${TARGET%/*}" GOARCH="${TARGET#*/}" CGO_ENABLED=0 go build -trimpath -o /tmp/claude-hub ./cmd/claude-hub
+        env:
+          TARGET: ${{ matrix.target }}
+
+  installer:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ["debian:stable-slim", "alpine:latest"]
+    container: ${{ matrix.image }}
+    steps:
+      - name: Tools
+        run: |
+          if command -v apk >/dev/null; then apk add --no-cache go curl tar git; else apt-get update && apt-get install -y golang-go curl ca-certificates tar git; fi
+      - uses: actions/checkout@v4
+      - name: install.sh against a local release server
+        env:
+          GOTOOLCHAIN: auto
+        run: go test -run 'Installer|Truncated' ./test/e2e/
+
+  hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: No tokens, no e-mail addresses
+        run: scripts/hygiene.sh

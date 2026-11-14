@@ -1,0 +1,55 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Hygiene
+        run: scripts/hygiene.sh
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  homebrew-tap:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download checksums.txt
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release download "$GITHUB_REF_NAME" --pattern checksums.txt --dir /tmp/release
+      - name: Render the formula
+        run: packaging/homebrew/render-formula.sh "${GITHUB_REF_NAME#v}" /tmp/release/checksums.txt > /tmp/claude-hub.rb
+      - name: Push to wonsong82/homebrew-tap
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          if [ -z "$TAP_TOKEN" ]; then echo "HOMEBREW_TAP_TOKEN is not set; skipping the tap update"; exit 0; fi
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/wonsong82/homebrew-tap.git" /tmp/tap
+          mkdir -p /tmp/tap/Formula
+          cp /tmp/claude-hub.rb /tmp/tap/Formula/claude-hub.rb
+          cd /tmp/tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/claude-hub.rb
+          git diff --cached --quiet && { echo "formula unchanged"; exit 0; }
+          git commit -m "claude-hub ${GITHUB_REF_NAME}"
+          git push origin HEAD

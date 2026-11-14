@@ -1,0 +1,54 @@
+# GoReleaser configuration for claude-hub releases (run by .github/workflows/release.yml).
+version: 2
+project_name: claude-hub
+
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+
+builds:
+  - id: claude-hub
+    main: ./cmd/claude-hub
+    binary: claude-hub
+    env:
+      - CGO_ENABLED=0
+    goos: [darwin, linux]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w
+      - -X github.com/wonsong82/claude-hub/internal/version.Version={{ .Version }}
+      - -X github.com/wonsong82/claude-hub/internal/version.Commit={{ .ShortCommit }}
+
+archives:
+  - id: default
+    formats: [tar.gz]
+    # install.sh and self-update expect exactly this name, with the binary at the root.
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+changelog:
+  use: git
+  sort: asc
+
+release:
+  github:
+    owner: wonsong82
+    name: claude-hub
+  footer: |
+    Install: `brew install wonsong82/tap/claude-hub`, or
+    `curl -fsSL https://raw.githubusercontent.com/wonsong82/claude-hub/main/install.sh | sh`.
+    Verify downloads against `checksums.txt` (SHA-256). No signatures in v1.
+
+    Platforms: macOS (arm64, x86_64) at or above the minimum the Go toolchain in `go.mod`
+    supports, and Linux (arm64, x86_64).
+
+    Unofficial. Not affiliated with, endorsed by or sponsored by Anthropic. Claude and Claude
+    Code are trademarks of Anthropic, PBC.

@@ -1,0 +1,56 @@
+# Homebrew formula for claude-hub, rendered by render-formula.sh at release time and pushed
+# to the tap repository wonsong82/homebrew-tap as Formula/claude-hub.rb.
+class ClaudeHub < Formula
+  desc "Unofficial profile launcher for Claude Code"
+  homepage "https://github.com/wonsong82/claude-hub"
+  version "@VERSION@"
+  license "MIT"
+
+  on_macos do
+    on_arm do
+      url "https://github.com/wonsong82/claude-hub/releases/download/v@VERSION@/claude-hub_@VERSION@_darwin_arm64.tar.gz"
+      sha256 "@SHA256_DARWIN_ARM64@"
+    end
+    on_intel do
+      url "https://github.com/wonsong82/claude-hub/releases/download/v@VERSION@/claude-hub_@VERSION@_darwin_amd64.tar.gz"
+      sha256 "@SHA256_DARWIN_AMD64@"
+    end
+  end
+
+  on_linux do
+    on_arm do
+      url "https://github.com/wonsong82/claude-hub/releases/download/v@VERSION@/claude-hub_@VERSION@_linux_arm64.tar.gz"
+      sha256 "@SHA256_LINUX_ARM64@"
+    end
+    on_intel do
+      url "https://github.com/wonsong82/claude-hub/releases/download/v@VERSION@/claude-hub_@VERSION@_linux_amd64.tar.gz"
+      sha256 "@SHA256_LINUX_AMD64@"
+    end
+  end
+
+  # The binary and completions only: no rc file is touched and no shim is installed.
+  def install
+    bin.install "claude-hub"
+    generate_completions_from_executable(bin/"claude-hub", "completion")
+  end
+
+  def caveats
+    <<~EOS
+      claude-hub is an unofficial profile launcher for Claude Code. It is not affiliated
+      with, endorsed by or sponsored by Anthropic.
+
+      Start with:
+        claude-hub init
+
+      The optional `claude` shim is not installed by Homebrew; run `claude-hub install-shim`.
+
+      To uninstall:
+        claude-hub uninstall-shim && brew uninstall claude-hub
+      Config, secrets and profile folders are left in place.
+    EOS
+  end
+
+  test do
+    assert_match "claude-hub #{version}", shell_output("#{bin}/claude-hub version")
+  end
+end
