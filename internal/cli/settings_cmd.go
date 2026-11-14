@@ -261,11 +261,7 @@ func (x *Ctx) promote(c *config.Config, profile string, vals map[string]settings
 			jsonx.SetPath(B, pth, jsonx.Clone(v.Value))
 		}
 	}
-	perm := os.FileMode(0o644)
-	if fi, err := os.Stat(f.Base); err == nil {
-		perm = fi.Mode().Perm()
-	}
-	return fsutil.WriteFileAtomic(f.Base, jsonx.Marshal(B), perm)
+	return fsutil.WriteThrough(f.Base, jsonx.Marshal(B), 0o644)
 }
 
 func (x *Ctx) saveDiscarded(profile string, d settings.Drift) error {

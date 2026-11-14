@@ -116,6 +116,11 @@ func Main(argv []string) int {
 		return 0
 	case !asClaude && len(args) > 0 && isHubCommand(args[0]):
 		launch.Live(x.P) // prune stale run entries
+		switch args[0] {
+		case "statusline", "install-shim", "uninstall-shim", "completion", "uninstall":
+		default:
+			x.shimWarning()
+		}
 		err = x.runCommand(args[0], args[1:])
 	default:
 		err = x.launch(args, asClaude)

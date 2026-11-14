@@ -153,7 +153,7 @@ func init() {
 	helpTopics["sync"] = helpTopics["settings"]
 	helpTopics["migrate"] = helpTopics["backup"]
 	helpTopics["exec"] = "claude-hub exec <profile> -- <command> [args...]\nRun any command with the profile's environment.\n"
-	helpTopics["doctor"] = "claude-hub doctor [--fix] [--json]\nRead-only unless --fix; exit 1 on any failure.\n"
+	helpTopics["doctor"] = "claude-hub doctor [--fix [--yes]] [--json]\nRead-only unless --fix; merging a replaced link back needs a terminal or --yes. Exit 1 on any failure.\n"
 	helpTopics["init"] = "claude-hub init [--yes]\nCreate config.toml; offers to register ~/.claude as the base profile 'main' (Claude's own login).\n"
 	helpTopics["self-update"] = "claude-hub self-update [--version vX.Y.Z]\nCurl installs only; Homebrew installs use brew upgrade.\n"
 	helpTopics["uninstall"] = "claude-hub uninstall [--purge] [--yes]\nRemoves the shim and the binary. Profile folders are never removed.\n"

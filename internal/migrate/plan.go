@@ -297,7 +297,17 @@ func renameBlocked(base, rel, profile string, memo map[string]string) string {
 	return keepBothName(base, rel, profile)
 }
 
+// same compares two units by content. A top-level link is followed for the comparison
+// only, so a base file that links to identical content is a duplicate, not a conflict.
 func same(a, b string) bool {
+	if fsutil.IsSymlink(a) != fsutil.IsSymlink(b) {
+		if r, err := filepath.EvalSymlinks(a); err == nil {
+			a = r
+		}
+		if r, err := filepath.EvalSymlinks(b); err == nil {
+			b = r
+		}
+	}
 	ha, e1 := fsutil.HashTree(a)
 	hb, e2 := fsutil.HashTree(b)
 	return e1 == nil && e2 == nil && ha == hb && ha != ""
@@ -426,9 +436,15 @@ func PlanUnshare(c *config.Config, profile string, it share.Item, opt Options) (
 			j.Steps = append(j.Steps, Step{Kind: KUnlink, Src: fsutil.LinkTarget(pp), Dst: pp})
 			switch {
 			case mode == "copy" && fsutil.Exists(bp):
+				// The profile gets the base's content; a base item that is itself a link is
+				// resolved, so the profile does not end up writing into the shared target.
+				src := bp
+				if r, err := filepath.EvalSymlinks(bp); err == nil {
+					src = r
+				}
 				p2.Action = "copy"
-				p2.Units = []UnitPlan{{Path: ps.Name, Kind: Add, Size: fsutil.TreeSize(bp)}}
-				j.Steps = append(j.Steps, Step{Kind: KCopy, Src: bp, Dst: pp})
+				p2.Units = []UnitPlan{{Path: ps.Name, Kind: Add, Size: fsutil.TreeSize(src)}}
+				j.Steps = append(j.Steps, Step{Kind: KCopy, Src: src, Dst: pp})
 			case ps.Dir:
 				p2.Action = "empty"
 				j.Steps = append(j.Steps, Step{Kind: KMkdir, Dst: pp})

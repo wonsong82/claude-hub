@@ -342,3 +342,107 @@ func TestPluginsReportsMissing(t *testing.T) {
 		t.Fatalf("%v %v", m, pl.Confirm)
 	}
 }
+
+func TestRollbackKeepsADestinationItDidNotWrite(t *testing.T) {
+	f := setup(t)
+	put(t, filepath.Join(f.work, "keybindings.json"), "work keys")
+	it, _ := share.Lookup("keybindings")
+	pl, err := PlanShare(f.p, f.c, "work", it, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { AfterStep = nil }()
+	AfterStep = func(i int) error {
+		if i == 0 {
+			return fmt.Errorf("killed")
+		}
+		return nil
+	}
+	if err := Run(f.p, pl.Journal); err != ErrInterrupted {
+		t.Fatal(err)
+	}
+	AfterStep = nil
+	// Meanwhile a base session writes its own file.
+	put(t, filepath.Join(f.base, "keybindings.json"), "base keys")
+	j, _ := Pending(f.p)
+	if err := Resume(f.p, j); err == nil {
+		t.Fatal("resume overwrote the base file")
+	}
+	j, _ = Pending(f.p)
+	if err := Rollback(f.p, j); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(f.base, "keybindings.json")); string(b) != "base keys" {
+		t.Fatal("rollback deleted a file it never wrote")
+	}
+	if b, _ := os.ReadFile(filepath.Join(f.work, "keybindings.json")); string(b) != "work keys" {
+		t.Fatal("the profile's file is not back")
+	}
+}
+
+func TestInterruptedCrossDeviceMove(t *testing.T) {
+	for _, mode := range []string{"resume", "rollback"} {
+		t.Run(mode, func(t *testing.T) {
+			f := setup(t)
+			src := filepath.Join(f.work, "skills")
+			put(t, filepath.Join(src, "a", "S.md"), "a")
+			put(t, filepath.Join(src, "b", "S.md"), "b")
+			h, _ := fsutil.HashTree(src)
+			dst := filepath.Join(f.p.BackupsDir(), "x", "skills")
+			// The copy completed; removing the source stopped halfway.
+			if err := fsutil.CopyTree(src, dst); err != nil {
+				t.Fatal(err)
+			}
+			os.RemoveAll(filepath.Join(src, "a"))
+			j := &Journal{Operation: "share", Profile: "work", Item: "skills", Backup: filepath.Dir(dst),
+				Steps: []Step{{Kind: KMove, Src: src, Dst: dst, Hash: h}}}
+			if err := save(f.p, j); err != nil {
+				t.Fatal(err)
+			}
+			var err error
+			if mode == "resume" {
+				err = Resume(f.p, j)
+			} else {
+				err = Rollback(f.p, j)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			// The complete copy must survive in either case.
+			var whole string
+			if mode == "resume" {
+				whole = dst
+			} else {
+				whole = src
+			}
+			if got, _ := fsutil.HashTree(whole); got != h {
+				t.Fatalf("%s: the complete copy was lost", mode)
+			}
+		})
+	}
+}
+
+func TestUnshareCopyResolvesABaseLink(t *testing.T) {
+	f := setup(t)
+	dot := filepath.Join(filepath.Dir(f.base), "dotfiles", "skills")
+	put(t, filepath.Join(dot, "s", "S.md"), "x")
+	os.Symlink(dot, filepath.Join(f.base, "skills"))
+	os.Symlink(filepath.Join(f.base, "skills"), filepath.Join(f.work, "skills"))
+	c, _, _ := config.Load(f.p)
+	c.Profiles["work"].Share.Skills = config.Shared
+	c.Save(f.p.LockDir())
+	it, _ := share.Lookup("skills")
+	pl, err := PlanUnshare(c, "work", it, Options{Unshare: "copy"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Run(f.p, pl.Journal); err != nil {
+		t.Fatal(err)
+	}
+	if fsutil.IsSymlink(filepath.Join(f.work, "skills")) {
+		t.Fatal("the profile got a link, not its own copy")
+	}
+	if b, _ := os.ReadFile(filepath.Join(f.work, "skills", "s", "S.md")); string(b) != "x" {
+		t.Fatal("content missing")
+	}
+}

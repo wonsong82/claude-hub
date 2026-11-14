@@ -194,7 +194,7 @@ func (x *Ctx) statuslineInstall(args []string) error {
 		sl.Set("type", "command")
 		sl.Set("command", cmd)
 		obj.Set("statusLine", sl)
-		if err := fsutil.WriteFileAtomic(f, jsonx.Marshal(obj), 0o644); err != nil {
+		if err := fsutil.WriteThrough(f, jsonx.Marshal(obj), 0o644); err != nil {
 			return err
 		}
 		x.IO.Printf("%s: statusLine set\n", xdg.Abbrev(f, x.P.Home))
@@ -233,7 +233,7 @@ func (x *Ctx) statuslineUninstall(args []string) error {
 			return err
 		}
 		obj.Delete("statusLine")
-		if err := fsutil.WriteFileAtomic(f, jsonx.Marshal(obj), 0o644); err != nil {
+		if err := fsutil.WriteThrough(f, jsonx.Marshal(obj), 0o644); err != nil {
 			return err
 		}
 		x.IO.Printf("%s: statusLine removed\n", xdg.Abbrev(f, x.P.Home))
@@ -265,7 +265,7 @@ func (x *Ctx) syncAll(c *config.Config) error {
 }
 
 func (x *Ctx) cmdDoctor(args []string) error {
-	o, err := parseArgs(args, []string{"fix", "json"}, nil)
+	o, err := parseArgs(args, []string{"fix", "json", "yes"}, nil)
 	if err != nil {
 		return err
 	}
@@ -279,8 +279,14 @@ func (x *Ctx) cmdDoctor(args []string) error {
 			if ch.Fix == nil {
 				continue
 			}
-			if ch.DataFix && x.IO.Interactive {
-				if ok, _ := x.IO.Confirm(ch.Message+": merge it back?", false); !ok {
+			if ch.DataFix {
+				// Moving data needs a confirmation: a terminal, or --yes.
+				ok, err := x.IO.Confirm(ch.Message+": merge it back into the base (the copy goes to a backup)?", o.bools["yes"])
+				if err != nil {
+					x.IO.Errf("claude-hub: skipped (needs a terminal or --yes): %s\n", ch.Message)
+					continue
+				}
+				if !ok {
 					continue
 				}
 			}

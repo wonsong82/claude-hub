@@ -319,3 +319,19 @@ func MoveTree(src, dst string) error {
 
 // RemoveTree removes path without following symlinks (os.RemoveAll never follows them).
 func RemoveTree(path string) error { return os.RemoveAll(path) }
+
+// WriteThrough writes data atomically to path; when path is a symlink it writes to the
+// link's final target instead, so the link (for example into a dotfiles folder) survives.
+func WriteThrough(path string, data []byte, perm os.FileMode) error {
+	if IsSymlink(path) {
+		target, err := filepath.EvalSymlinks(path)
+		if err != nil {
+			return fmt.Errorf("%s is a link whose target cannot be resolved: %v", path, err)
+		}
+		path = target
+	}
+	if fi, err := os.Stat(path); err == nil {
+		perm = fi.Mode().Perm()
+	}
+	return WriteFileAtomic(path, data, perm)
+}

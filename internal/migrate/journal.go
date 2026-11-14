@@ -37,8 +37,15 @@ type Step struct {
 	// Created lists the parent folders a copy or move created, deepest first, so that a
 	// rollback can remove them again.
 	Created []string `json:"created,omitempty"`
-	Done    bool     `json:"done"`
+	// Hash is the tree hash of a move's source, recorded before the move starts, so that an
+	// interrupted cross-device move can tell the complete copy from the partial one.
+	Hash string `json:"hash,omitempty"`
+	Done bool   `json:"done"`
 }
+
+// partial is where a copy is written before it is renamed into place, so that an existing
+// destination is never mistaken for a half-written copy.
+func partial(dst string) string { return dst + ".claude-hub-partial" }
 
 // missingParents returns the ancestors of p that do not exist, deepest first.
 func missingParents(p string) []string {
@@ -192,6 +199,16 @@ func Resume(p xdg.Paths, j *Journal) error {
 		if s.Done {
 			continue
 		}
+		if s.Kind == KMove && s.Hash == "" && fsutil.Exists(s.Src) && !fsutil.Exists(s.Dst) {
+			h, err := fsutil.HashTree(s.Src)
+			if err != nil {
+				return err
+			}
+			s.Hash = h
+			if err := save(p, j); err != nil {
+				return err
+			}
+		}
 		if err := do(p, s); err != nil {
 			return fmt.Errorf("step %d (%s %s): %v; the journal is kept: run \"claude-hub migrate resume\" or \"claude-hub migrate rollback\"", i+1, s.Kind, s.Dst, err)
 		}
@@ -214,13 +231,18 @@ func do(p xdg.Paths, s *Step) error {
 		srcOK, dstOK := fsutil.Exists(s.Src), fsutil.Exists(s.Dst)
 		switch {
 		case srcOK && dstOK:
-			// An interrupted cross-device move: the copy may be complete.
-			a, _ := fsutil.HashTree(s.Src)
-			b, _ := fsutil.HashTree(s.Dst)
-			if a != b {
-				return fmt.Errorf("both %s and %s exist and differ", s.Src, s.Dst)
+			// An interrupted cross-device move: finish it only when the destination is the
+			// complete copy; when the source is intact, redo it from the start.
+			switch whole := wholeSide(s); whole {
+			case "dst":
+				return fsutil.RemoveTree(s.Src)
+			case "src":
+				if err := fsutil.RemoveTree(s.Dst); err != nil {
+					return err
+				}
+				return fsutil.MoveTree(s.Src, s.Dst)
 			}
-			return fsutil.RemoveTree(s.Src)
+			return fmt.Errorf("both %s and %s exist and neither matches the recorded hash; settle it by hand", s.Src, s.Dst)
 		case !srcOK && dstOK:
 			return nil
 		case !srcOK:
@@ -238,7 +260,14 @@ func do(p xdg.Paths, s *Step) error {
 			return fmt.Errorf("%s already exists", s.Dst)
 		}
 		s.Created = append(s.Created, missingParents(s.Dst)...)
-		return fsutil.CopyTree(s.Src, s.Dst)
+		tmp := partial(s.Dst)
+		if err := fsutil.RemoveTree(tmp); err != nil {
+			return err
+		}
+		if err := fsutil.CopyTree(s.Src, tmp); err != nil {
+			return err
+		}
+		return os.Rename(tmp, s.Dst)
 	case KLink:
 		if fsutil.IsSymlink(s.Dst) && fsutil.LinkTarget(s.Dst) == s.Src {
 			return nil
@@ -266,6 +295,22 @@ func do(p xdg.Paths, s *Step) error {
 	return fmt.Errorf("unknown step %q", s.Kind)
 }
 
+// wholeSide says which side of an interrupted move holds the complete content: "src",
+// "dst", or "" when neither matches the hash recorded before the move.
+func wholeSide(s *Step) string {
+	a, _ := fsutil.HashTree(s.Src)
+	b, _ := fsutil.HashTree(s.Dst)
+	switch {
+	case s.Hash != "" && a == s.Hash:
+		return "src"
+	case s.Hash != "" && b == s.Hash:
+		return "dst"
+	case s.Hash == "" && a == b:
+		return "dst"
+	}
+	return ""
+}
+
 // Rollback undoes the done steps of a journal in reverse order and removes the journal.
 // A copy that changed since it was made is moved into the backup, never deleted.
 func Rollback(p xdg.Paths, j *Journal) error {
@@ -280,18 +325,26 @@ func Rollback(p xdg.Paths, j *Journal) error {
 			if !fsutil.Exists(s.Src) && fsutil.Exists(s.Dst) {
 				s.Done = true
 			} else if fsutil.Exists(s.Src) && fsutil.Exists(s.Dst) {
-				// An interrupted cross-device move: the source is intact, so the
-				// (possibly partial) copy is the redundant one.
-				_ = fsutil.RemoveTree(s.Dst)
+				// An interrupted cross-device move: keep whichever side is complete.
+				switch wholeSide(s) {
+				case "src":
+					_ = fsutil.RemoveTree(s.Dst)
+				case "dst":
+					_ = fsutil.RemoveTree(s.Src)
+					s.Done = true
+				default:
+					return fmt.Errorf("both %s and %s exist and neither matches the recorded hash; settle it by hand", s.Src, s.Dst)
+				}
 			}
 		case KCopy:
+			// Only the partial file is ours; an existing destination that differs was not
+			// written by this step and is left alone.
+			_ = fsutil.RemoveTree(partial(s.Dst))
 			if fsutil.Exists(s.Dst) {
 				a, _ := fsutil.HashTree(s.Src)
 				b, _ := fsutil.HashTree(s.Dst)
 				if a == b {
 					s.Done = true
-				} else {
-					_ = fsutil.RemoveTree(s.Dst) // partial copy of a file still in the backup
 				}
 			}
 		case KLink:

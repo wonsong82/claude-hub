@@ -359,6 +359,9 @@ func (r *run) profiles() {
 				ch := r.add("profiles", Warn, fmt.Sprintf("%s: shared %s is a real copy at %s (not a link)", n, pb.Item, xdg.Abbrev(pb.Path, e.P.Home)), fmt.Sprintf("\"claude-hub profile share %s %s\" merges it back", n, pb.Item))
 				ch.DataFix = true
 				ch.Fix = func() (string, error) {
+					if runs := launch.LiveFor(e.P, name); len(runs) > 0 {
+						return "", fmt.Errorf("profile '%s' has %d running session(s); stop them, then run \"claude-hub profile share %s %s\"", name, len(runs), name, item)
+					}
 					cc, _, err := config.Load(e.P)
 					if err != nil {
 						return "", err

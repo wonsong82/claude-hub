@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -174,5 +175,29 @@ func TestStatuslineInstall(t *testing.T) {
 	e.ok("statusline", "uninstall")
 	if jsonOf(t, base)["statusLine"] != nil {
 		t.Fatal("not removed")
+	}
+}
+
+func TestBaseSettingsLinkSurvivesWrites(t *testing.T) {
+	e := setupTwo(t)
+	dot := filepath.Join(e.home, "dotfiles", "settings.json")
+	writeFile(t, dot, `{"model":"opus"}`+"\n")
+	base := filepath.Join(e.home, ".claude", "settings.json")
+	if err := os.Symlink(dot, base); err != nil {
+		t.Fatal(err)
+	}
+	e.ok("statusline", "install")
+	if !isLink(base) || jsonOf(t, dot)["statusLine"] == nil {
+		t.Fatal("statusline install replaced the base link")
+	}
+	ws := filepath.Join(e.home, ".claude-work", "settings.json")
+	m := jsonOf(t, ws)
+	m["x"] = 1
+	b, _ := json.MarshalIndent(m, "", "  ")
+	writeFile(t, ws, string(b))
+	e.ok("sync")
+	e.ok("settings", "resolve", "work", "--all", "promote")
+	if !isLink(base) || jsonOf(t, dot)["x"] == nil {
+		t.Fatal("promote replaced the base link")
 	}
 }

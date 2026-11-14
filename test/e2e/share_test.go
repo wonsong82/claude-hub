@@ -200,7 +200,12 @@ func TestBrokenLinkWarnsAndDoctorFixMerges(t *testing.T) {
 	r := e.ok("work")
 	expectContains(t, r.err, "should link to the base")
 	expectContains(t, r.out, "profile=work")
-	e.ok("doctor", "--fix")
+	// Without a terminal, moving data needs --yes.
+	expectContains(t, e.hub("doctor", "--fix").err, "needs a terminal or --yes")
+	if isLink(filepath.Join(work, "skills")) {
+		t.Fatal("merged without confirmation")
+	}
+	e.ok("doctor", "--fix", "--yes")
 	if !isLink(filepath.Join(work, "skills")) || readFile(t, filepath.Join(e.home, ".claude", "skills", "new", "SKILL.md")) != "new" {
 		t.Fatal("doctor --fix did not merge it back")
 	}

@@ -143,8 +143,9 @@ Segments, disks and extra commands whose output is appended are set in the `[sta
 
 `claude-hub doctor` checks the config, the real `claude`, the shim, the secret store (fingerprints only), every
 profile's links and settings, your shell environment and any unfinished migration. `--fix` repairs what is safe
-(re-appends the shim block, re-creates missing links, prunes stale entries, syncs settings, merges a replaced link
-back through the sharing rules).
+(re-appends the shim block, re-creates missing links, prunes stale entries, syncs settings) and, after a
+confirmation (or `--yes`) and only while no session of that profile runs, merges a replaced link back through the
+sharing rules.
 
 ## Files
 
