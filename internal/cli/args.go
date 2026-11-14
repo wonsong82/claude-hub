@@ -1,13 +1,7 @@
 package cli
 
 import (
-	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
-	"time"
-
-	"github.com/wonsong82/claude-hub/internal/fsutil"
 )
 
 // opts is a parsed command line: flags and positionals.
@@ -67,25 +61,6 @@ func parseArgs(args []string, boolFlags, strFlags []string) (*opts, error) {
 }
 
 func (o *opts) has(s string) bool { _, ok := o.strs[s]; return ok || o.bools[s] }
-
-// shimWarning prints, at most once a day, that the shim is installed but `claude` on the
-// current PATH resolves elsewhere.
-func (x *Ctx) shimWarning() {
-	link := filepath.Join(x.P.ShimDir(), "claude")
-	if !fsutil.IsSymlink(link) {
-		return
-	}
-	got, err := exec.LookPath("claude")
-	if err == nil && filepath.Clean(got) == link {
-		return
-	}
-	stamp := filepath.Join(x.P.StateDir, "shim-warned")
-	if fi, err := os.Stat(stamp); err == nil && time.Since(fi.ModTime()) < 24*time.Hour {
-		return
-	}
-	x.IO.Errf("claude-hub: the claude shim is installed but `claude` on this PATH is %s; run \"claude-hub install-shim\" to put the shim last again\n", orNone(got))
-	_ = fsutil.WriteFileAtomic(stamp, []byte(time.Now().UTC().Format(time.RFC3339)+"\n"), 0o600)
-}
 
 func orNone(s string) string {
 	if s == "" {

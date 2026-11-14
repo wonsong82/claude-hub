@@ -163,7 +163,8 @@ func (r *run) shim() {
 	installed := shim.Installed(e.P)
 	sh := filepath.Base(e.Shell)
 	if !installed {
-		r.add("shim", OK, "not installed (optional: \"claude-hub install-shim\")", "")
+		c := r.add("shim", Fail, "not installed: `claude` bypasses claude-hub", "run \"claude-hub install-shim\"")
+		c.Fix = r.shimFix()
 	} else {
 		t := fsutil.LinkTarget(link)
 		if _, err := os.Stat(t); err != nil {
@@ -239,12 +240,12 @@ func orNone(s string) string {
 func (r *run) shimFix() func() (string, error) {
 	e := r.e
 	return func() (string, error) {
-		sh := filepath.Base(e.Shell)
-		if sh != "zsh" && sh != "bash" && sh != "fish" {
-			sh = "zsh"
+		shells := shim.Shells()
+		if sh := filepath.Base(e.Shell); len(shells) == 0 && (sh == "zsh" || sh == "bash" || sh == "fish") {
+			shells = []string{sh}
 		}
-		_, err := shim.Install(e.P, shim.StablePath(e.Self), []string{sh}, false)
-		return "re-appended the shim block", err
+		_, err := shim.Install(e.P, shim.StablePath(e.Self), shells, false)
+		return "installed the shim and put its blocks last", err
 	}
 }
 

@@ -330,6 +330,18 @@ func orDefault(v, d string) string {
 	return v
 }
 
+// Shells returns every supported shell present on this machine (zsh, bash, fish), so the
+// shim is on PATH whichever of them a terminal, an app or a tool starts.
+func Shells() []string {
+	var out []string
+	for _, s := range []string{"zsh", "bash", "fish"} {
+		if ShellPath(s) != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 // ShellPath finds a shell binary by name.
 func ShellPath(name string) string {
 	if login := os.Getenv("SHELL"); filepath.Base(login) == name {

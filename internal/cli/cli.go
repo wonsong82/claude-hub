@@ -117,9 +117,11 @@ func Main(argv []string) int {
 	case !asClaude && len(args) > 0 && isHubCommand(args[0]):
 		launch.Live(x.P) // prune stale run entries
 		switch args[0] {
-		case "statusline", "install-shim", "uninstall-shim", "completion", "uninstall":
+		// statusline runs every few seconds; doctor reports drift rather than hiding it;
+		// install-shim and uninstall do the work themselves.
+		case "statusline", "install-shim", "completion", "uninstall", "doctor", "version", "help":
 		default:
-			x.shimWarning()
+			x.ensureShim()
 		}
 		err = x.runCommand(args[0], args[1:])
 	default:
@@ -210,7 +212,7 @@ func (x *Ctx) launch(args []string, asClaude bool) error {
 	}
 
 	if !asClaude {
-		x.shimWarning()
+		x.ensureShim()
 	}
 	name := named
 	src := resolve.Source{Kind: "argument"}

@@ -5,7 +5,9 @@
 #
 # Downloads the release archive for this OS and architecture plus checksums.txt over HTTPS,
 # verifies the SHA-256, and installs the single file claude-hub into
-# ${CLAUDE_HUB_INSTALL_DIR:-$HOME/.local/bin} by rename. No sudo; no rc file is edited.
+# ${CLAUDE_HUB_INSTALL_DIR:-$HOME/.local/bin} by rename, then installs the `claude` shim
+# (claude-hub install-shim: a link plus a marked block at the end of each shell's rc files).
+# No sudo.
 #
 #   CLAUDE_HUB_VERSION=vX.Y.Z   install that version instead of the latest
 #   CLAUDE_HUB_INSTALL_DIR=DIR  install there
@@ -80,6 +82,10 @@ main() {
   chmod 755 "$dir/.claude-hub.new.$$"
   mv -f "$dir/.claude-hub.new.$$" "$dir/claude-hub"
   say "installed $dir/claude-hub ($version)"
+
+  # The shim is not optional: it is how `claude` reaches claude-hub.
+  say "installing the claude shim"
+  "$dir/claude-hub" install-shim </dev/null || die "the claude shim could not be installed; run \"$dir/claude-hub install-shim\" to see why"
 
   case ":$PATH:" in
     *":$dir:"*) ;;

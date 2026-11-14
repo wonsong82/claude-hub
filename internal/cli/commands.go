@@ -28,8 +28,6 @@ func (x *Ctx) runCommand(cmd string, args []string) error {
 		return x.cmdExec(args)
 	case "install-shim":
 		return x.cmdInstallShim(args)
-	case "uninstall-shim":
-		return x.cmdUninstallShim(args)
 	case "statusline":
 		return x.cmdStatusline(args)
 	case "doctor":
@@ -74,7 +72,7 @@ Selection:    default, use, which
 Keys:         key add|set|list|rename|remove
 Settings:     settings mode|own|diff|resolve, sync
 Running:      exec <profile> -- <command>
-Shim:         install-shim, uninstall-shim
+Shim:         install-shim (repair)
 Other:        statusline, doctor, backup, migrate, self-update, uninstall,
               completion, version, help [command]
 
@@ -130,10 +128,13 @@ claude-hub use --clear [--dir PATH] [--rule]
 claude-hub which [--json]
 `,
 	"shim": `claude-hub install-shim [--shell zsh,bash,fish] [--dry-run]
-claude-hub uninstall-shim [--dry-run]
-The shim is a link named claude in ~/.local/share/claude-hub/shim, put first on PATH by a
-marked block at the end of your shell rc files. Under the name claude, no hub command is
-recognised: claude doctor, claude update and claude mcp reach Claude Code unchanged.
+The shim is how claude-hub works: a link named claude in ~/.local/share/claude-hub/shim, put
+first on PATH by a marked block at the end of the rc files of every shell found (zsh, bash,
+fish). It is always installed: the installer puts it in, and every claude-hub command puts it
+back or moves its block last again when something changed it. install-shim does the same by
+hand and checks the result in a clean shell. Only "claude-hub uninstall" removes it.
+Under the name claude, no hub command is recognised: claude doctor, claude update and
+claude mcp reach Claude Code unchanged.
 `,
 	"statusline": `claude-hub statusline                       render from Claude's JSON on stdin
 claude-hub statusline install [--force]     set statusLine in the base settings.json
@@ -149,7 +150,6 @@ func init() {
 	helpTopics["default"] = helpTopics["use"]
 	helpTopics["which"] = helpTopics["use"]
 	helpTopics["install-shim"] = helpTopics["shim"]
-	helpTopics["uninstall-shim"] = helpTopics["shim"]
 	helpTopics["sync"] = helpTopics["settings"]
 	helpTopics["migrate"] = helpTopics["backup"]
 	helpTopics["exec"] = "claude-hub exec <profile> -- <command> [args...]\nRun any command with the profile's environment.\n"

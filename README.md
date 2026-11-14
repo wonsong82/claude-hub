@@ -23,7 +23,8 @@ Homebrew:
 brew install wonsong82/tap/claude-hub
 ```
 
-Or the installer script (no sudo; installs `~/.local/bin/claude-hub` after checking its SHA-256):
+Or the installer script (no sudo; installs `~/.local/bin/claude-hub` after checking its SHA-256, then the `claude`
+shim):
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/wonsong82/claude-hub/main/install.sh | sh
@@ -31,6 +32,9 @@ curl -fsSL https://raw.githubusercontent.com/wonsong82/claude-hub/main/install.s
 
 `CLAUDE_HUB_VERSION=vX.Y.Z` pins a version and `CLAUDE_HUB_INSTALL_DIR` picks another folder. Upgrade with
 `brew upgrade claude-hub`, or `claude-hub self-update` for a script install.
+
+Homebrew may not edit shell files, so after `brew install` run `claude-hub init` once: like every claude-hub
+command, it installs the [`claude` shim](#the-claude-shim).
 
 ## Quick start
 
@@ -118,18 +122,17 @@ with `claude-hub settings resolve <profile>` (promote it to the base, own it, or
 `shared` (a link to the base file) and `own` (claude-hub never touches it). Details:
 [docs/settings.md](docs/settings.md).
 
-## The `claude` shim (optional)
+## The `claude` shim
 
-```sh
-claude-hub install-shim      # then open a new terminal
-```
-
-This puts a `claude` link to claude-hub first on your `PATH`, so plain `claude` starts under the selected profile and
-tools that run `claude` from your shell get it too. Under the name `claude` no claude-hub command is recognised:
+The shim is how claude-hub works, and it is always installed: a `claude` link to claude-hub first on your `PATH`, so
+plain `claude` starts under the selected profile, and so do hooks, subagents and tools that run `claude` from your
+shell. Without it they would reach Claude Code directly, with the wrong config folder and login. The installer
+script puts it in; every claude-hub command puts it back, or moves its `PATH` block to the end of your rc files
+again, when something changed it (open a new terminal afterwards). It covers every shell found: zsh, bash and fish. Under the name `claude` no claude-hub command is recognised:
 `claude doctor`, `claude update` and `claude mcp list` reach Claude Code unchanged, and claude-hub runs the real
-`claude` found later on `PATH`, so Claude's own installer and auto-update keep working. Running `install-shim` again
-moves its `PATH` block back to the end of your rc files if another installer appended after it;
-`claude-hub uninstall-shim` removes it. Details: [docs/shim.md](docs/shim.md).
+`claude` found later on `PATH`, so Claude's own installer and auto-update keep working. `claude-hub install-shim`
+repairs it by hand and checks it in a clean shell; `doctor` fails while it is missing. Only `claude-hub uninstall`
+removes it. Details: [docs/shim.md](docs/shim.md).
 
 For a tool that starts `claude` with its own `PATH`, run the tool itself under a profile:
 `claude-hub exec work -- some-agent-app`.
@@ -164,7 +167,7 @@ recursion guard; 127 real `claude` not found. A start otherwise returns Claude's
 
 `claude-hub uninstall` removes the shim and the binary and lists what it leaves (config, secrets, backups).
 `--purge` also deletes those and the hub's keys in the secret store. Profile folders are never removed, and shared
-links keep working without claude-hub. For Homebrew: `claude-hub uninstall-shim && brew uninstall claude-hub`.
+links keep working without claude-hub. For Homebrew: `claude-hub uninstall && brew uninstall claude-hub`.
 
 ## Development
 

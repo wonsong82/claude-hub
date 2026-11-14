@@ -45,7 +45,7 @@ var ShareItems = []string{"sessions", "projects", "skills", "agents", "commands"
 
 // HubCommands are reserved words: the hub's own commands (design section 7).
 var HubCommands = []string{"init", "profile", "key", "default", "use", "which", "settings", "sync", "exec",
-	"install-shim", "uninstall-shim", "statusline", "doctor", "backup", "migrate", "self-update", "uninstall",
+	"install-shim", "statusline", "doctor", "backup", "migrate", "self-update", "uninstall",
 	"completion", "version", "help"}
 
 // ClaudeCommands are Claude Code subcommands (from `claude --help`); a profile may not be

@@ -73,6 +73,9 @@ func TestInstallerVerifiesAndInstalls(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
+	if !strings.Contains(out, "installing the claude shim") {
+		t.Fatalf("the installer did not install the shim:\n%s", out)
+	}
 	b, err := os.ReadFile(filepath.Join(dir, "claude-hub"))
 	if err != nil || string(b) != fakeBinary {
 		t.Fatalf("installed: %q %v", b, err)

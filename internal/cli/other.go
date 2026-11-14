@@ -35,6 +35,26 @@ func loginShell() string {
 	return "/bin/zsh"
 }
 
+// ensureShim keeps the shim installed: it creates the link and adds the rc blocks for every
+// shell found, or moves a block last again when another installer appended after it. It
+// never fails the command it runs before; a problem is reported once per run on stderr.
+func (x *Ctx) ensureShim() {
+	shells := shim.Shells()
+	changes, err := shim.Install(x.P, shim.StablePath(x.Self), shells, false)
+	if err != nil {
+		x.IO.Errf("claude-hub: the claude shim could not be installed: %v; run \"claude-hub install-shim\"\n", err)
+		return
+	}
+	if len(changes) == 0 {
+		return
+	}
+	var files []string
+	for _, ch := range changes {
+		files = append(files, xdg.Abbrev(ch.File, x.P.Home))
+	}
+	x.IO.Errf("claude-hub: installed the claude shim (%s); open a new terminal for it to apply\n", strings.Join(files, ", "))
+}
+
 func (x *Ctx) cmdInstallShim(args []string) error {
 	o, err := parseArgs(args, []string{"dry-run"}, []string{"shell"})
 	if err != nil {
@@ -44,6 +64,9 @@ func (x *Ctx) cmdInstallShim(args []string) error {
 		return usage("usage: claude-hub install-shim [--shell zsh,bash,fish] [--dry-run]")
 	}
 	shells := splitList(o.strs["shell"])
+	if len(shells) == 0 {
+		shells = shim.Shells()
+	}
 	if len(shells) == 0 {
 		shells = []string{filepath.Base(loginShell())}
 	}
@@ -79,9 +102,12 @@ func (x *Ctx) cmdInstallShim(args []string) error {
 			continue
 		}
 		res, ver, ok := shim.Verify(x.P, sp)
-		if ok {
+		switch {
+		case ok:
 			x.IO.Printf("%s: claude -> %s; claude --version: %s\n", s, xdg.Abbrev(res, x.P.Home), ver)
-		} else {
+		case filepath.Clean(res) == filepath.Join(x.P.ShimDir(), "claude"):
+			x.IO.Printf("%s: claude -> %s; claude --version did not run (is Claude Code installed?)\n", s, xdg.Abbrev(res, x.P.Home))
+		default:
 			failed = true
 			x.IO.Errf("claude-hub: %s check failed: in a clean login shell claude is %s (version: %s)\n", s, orNone(res), orNone(ver))
 		}
@@ -89,41 +115,6 @@ func (x *Ctx) cmdInstallShim(args []string) error {
 	x.IO.Printf("open a new terminal for the shim to apply\n")
 	if failed {
 		return &silent{code: ExitFail}
-	}
-	return nil
-}
-
-func (x *Ctx) cmdUninstallShim(args []string) error {
-	o, err := parseArgs(args, []string{"dry-run"}, nil)
-	if err != nil {
-		return err
-	}
-	changes, err := shim.Uninstall(x.P, o.bools["dry-run"])
-	if err != nil {
-		return fail("%v", err)
-	}
-	for _, ch := range changes {
-		pre := "removed"
-		if o.bools["dry-run"] {
-			pre = "would remove"
-		}
-		what := "the block from"
-		if ch.File == x.P.ShimDir() {
-			what = "the shim folder"
-			x.IO.Printf("%s %s %s\n", pre, what, xdg.Abbrev(ch.File, x.P.Home))
-			continue
-		}
-		x.IO.Printf("%s %s %s\n", pre, what, xdg.Abbrev(ch.File, x.P.Home))
-	}
-	if len(changes) == 0 {
-		x.IO.Printf("the shim is not installed\n")
-	}
-	if !o.bools["dry-run"] {
-		if sp := loginShell(); sp != "" {
-			if got, err := shim.CleanShell(sp, x.P.Home, "command -v claude"); err == nil {
-				x.IO.Printf("claude now resolves to %s\n", orNone(got))
-			}
-		}
 	}
 	return nil
 }

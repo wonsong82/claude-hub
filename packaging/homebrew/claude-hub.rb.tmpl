@@ -28,7 +28,8 @@ class ClaudeHub < Formula
     end
   end
 
-  # The binary and completions only: no rc file is touched and no shim is installed.
+  # Homebrew may not edit shell rc files, so the formula installs the binary and completions;
+  # the shim goes in on the first claude-hub command (claude-hub init).
   def install
     bin.install "claude-hub"
     generate_completions_from_executable(bin/"claude-hub", "completion")
@@ -41,11 +42,12 @@ class ClaudeHub < Formula
 
       Start with:
         claude-hub init
-
-      The optional `claude` shim is not installed by Homebrew; run `claude-hub install-shim`.
+      This also installs the `claude` shim, which is how `claude` reaches claude-hub:
+      Homebrew itself may not edit your shell files. Every claude-hub command keeps the
+      shim in place.
 
       To uninstall:
-        claude-hub uninstall-shim && brew uninstall claude-hub
+        claude-hub uninstall && brew uninstall claude-hub
       Config, secrets and profile folders are left in place.
     EOS
   end

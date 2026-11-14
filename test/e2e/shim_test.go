@@ -144,9 +144,9 @@ func TestShimInstallRepairUninstall(t *testing.T) {
 		expectContains(t, rr.out, "real=1.0 profile=unset args="+args[0])
 	}
 	// Uninstall restores the files apart from the removed block.
-	r = e.runPath(stable, "claude-hub", "uninstall-shim")
+	r = e.runPath(stable, "claude-hub", "uninstall")
 	if r.code != 0 {
-		t.Fatalf("uninstall-shim: %s", r)
+		t.Fatalf("uninstall: %s", r)
 	}
 	for _, f := range files {
 		want := original + "export PATH=\"$HOME/.local/bin:$PATH\"\n"
@@ -178,7 +178,7 @@ func TestShimFish(t *testing.T) {
 	}
 	f := filepath.Join(e.home, ".config", "fish", "conf.d", "claude-hub.fish")
 	expectContains(t, readFile(t, f), "fish_add_path --move --prepend")
-	e.runPath(stable, "claude-hub", "uninstall-shim")
+	e.runPath(stable, "claude-hub", "uninstall")
 	if _, err := os.Stat(f); err == nil {
 		t.Fatal("fish file left behind")
 	}
@@ -219,4 +219,44 @@ func TestAutoUpdateInvariantsDuringLaunch(t *testing.T) {
 	}
 	r = e.runPath(stable, "claude-hub", "exec", "main", "--", "sh", "-c", "echo ${DISABLE_AUTOUPDATER-unset}")
 	expectOut(t, r, "unset")
+}
+
+// The shim is mandatory: a fresh setup has none, doctor fails on that, and the first
+// hub command installs it and keeps its block last.
+func TestShimIsMandatory(t *testing.T) {
+	zsh := findShell("zsh")
+	if zsh == "" {
+		t.Skip("no zsh")
+	}
+	e, stable := shimEnv(t)
+	shimLink := filepath.Join(e.home, ".local", "share", "claude-hub", "shim", "claude")
+	d := e.runPath(stable, "claude-hub", "doctor")
+	expectContains(t, d.out+d.err, "not installed: `claude` bypasses claude-hub")
+	if d.code == 0 {
+		t.Fatalf("doctor passed without the shim: %s", d)
+	}
+
+	r := e.runPath(stable, "claude-hub", "which")
+	expectContains(t, r.err, "installed the claude shim")
+	if tgt, _ := os.Readlink(shimLink); tgt != stable {
+		t.Fatalf("shim target %q", tgt)
+	}
+	zshrc := filepath.Join(e.home, ".zshrc")
+	if !strings.HasSuffix(readFile(t, zshrc), "# <<< claude-hub shim <<<\n") {
+		t.Fatalf("no block in .zshrc:\n%s", readFile(t, zshrc))
+	}
+
+	// Another installer appends after the block; the next hub command moves it last again.
+	writeFile(t, zshrc, readFile(t, zshrc)+"export PATH=\"$HOME/.local/bin:$PATH\"\n")
+	e.runPath(stable, "claude-hub", "which")
+	body := readFile(t, zshrc)
+	if !strings.HasSuffix(body, "# <<< claude-hub shim <<<\n") || strings.Count(body, "# >>> claude-hub shim >>>") != 1 {
+		t.Fatalf("block not moved last:\n%s", body)
+	}
+
+	// Nothing to do: no message.
+	r = e.runPath(stable, "claude-hub", "which")
+	if strings.Contains(r.err, "installed the claude shim") {
+		t.Fatalf("reported a shim install with nothing to do: %s", r)
+	}
 }

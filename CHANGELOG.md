@@ -16,5 +16,7 @@ The Go rewrite (v1), replacing the bash launcher.
   inherited `CLAUDE_CODE_OAUTH_TOKEN`.
 - Configurable sharing with the base folder, with dry runs, backups, conflict policies and a resumable journal.
 - Layered `settings.json` with owned paths, drift detection and `settings resolve`.
-- Opt-in `claude` shim that keeps Claude Code's installer and auto-update in charge.
+- A mandatory `claude` shim that keeps Claude Code's installer and auto-update in charge: the installer script puts
+  it in, every claude-hub command keeps it in place (for Homebrew, the first one installs it), and only
+  `claude-hub uninstall` removes it.
 - `doctor`, `statusline` with configurable segments, `exec`, `self-update`, `uninstall`, shell completions.
